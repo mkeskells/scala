@@ -1171,6 +1171,12 @@ object HashMap extends ImmutableMapFactory[HashMap] with BitOperations.Int {
       this
     }
 
+    private[collection] def +=(elem: (A, B), keyHashCode: Int): this.type = {
+      val hash = improve(keyHashCode)
+      rootNode = addOne(rootNode, elem, hash, 0)
+      this
+    }
+
     override def ++=(xs: TraversableOnce[(A, B)]): this.type = xs match {
       case hm: HashMap[A, B] =>
         if (rootNode eq EmptyHashMap) {
