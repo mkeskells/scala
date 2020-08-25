@@ -258,6 +258,7 @@ sealed class HashMap[A, +B] extends AbstractMap[A, B]
 object HashMap extends ImmutableMapFactory[HashMap] with BitOperations.Int {
 
   override def newBuilder[A, B]: mutable.Builder[(A, B), HashMap[A, B]] = new HashMapBuilder[A, B]
+  private[scala] def newBuilderPrivate[A, B] = new HashMapBuilder[A, B]
 
   private[collection] abstract class Merger[A, B] {
     def apply(kv1: (A, B), kv2: (A, B)): (A, B)
@@ -369,7 +370,7 @@ object HashMap extends ImmutableMapFactory[HashMap] with BitOperations.Int {
             this
           } else {
             val current = this.ensurePair
-            val nkv = merger(current, if (kv != null) kv else (key, value))
+            val nkv = merger(current, if (kv ne null) kv else (key, value))
             if ((current eq nkv) || (
               (this.key.asInstanceOf[AnyRef] eq nkv._1.asInstanceOf[AnyRef]) &&
                 (this.value.asInstanceOf[AnyRef] eq nkv._2.asInstanceOf[AnyRef]))) this
@@ -1167,13 +1168,25 @@ object HashMap extends ImmutableMapFactory[HashMap] with BitOperations.Int {
 
     override def +=(elem: (A, B)): this.type = {
       val hash = computeHash(elem._1)
-      rootNode = addOne(rootNode, elem, hash, 0)
+      rootNode = addOne(rootNode, elem._1, elem._2, elem, improvedHash = hash, level = 0)
       this
     }
 
     private[collection] def +=(elem: (A, B), keyHashCode: Int): this.type = {
       val hash = improve(keyHashCode)
-      rootNode = addOne(rootNode, elem, hash, 0)
+      rootNode = addOne(rootNode, elem._1, elem._2, elem, improvedHash = hash, level = 0)
+      this
+    }
+
+    private[collection] def add(k: A, v: B): this.type = {
+      val hash = computeHash(k)
+      rootNode = addOne(rootNode,k ,v , null, improvedHash = hash, level = 0)
+      this
+    }
+
+    private[collection] def add(k: A, v: B, keyHashCode: Int): this.type = {
+      val hash = improve(keyHashCode)
+      rootNode = addOne(rootNode,k ,v , null, improvedHash = hash, level = 0)
       this
     }
 
@@ -1230,32 +1243,32 @@ object HashMap extends ImmutableMapFactory[HashMap] with BitOperations.Int {
       new HashTrieMap[A, B](-1, elems, -1)
     }
 
-    private def addOne(toNode: HashMap[A, B], kv: (A, B), improvedHash: Int, level: Int): HashMap[A, B] = {
+    private def addOne(toNode: HashMap[A, B], k: A, v: B, kvOrNull: (A, B), improvedHash: Int, level: Int): HashMap[A, B]  = {
       toNode match {
         case leaf: HashMap1[A, B] =>
           if (leaf.hash == improvedHash)
-            leaf.updated0(kv._1, improvedHash, level, kv._2, kv, null)
-          else makeMutableTrie(leaf, new HashMap1(kv._1, improvedHash, kv._2, kv), level)
+            leaf.updated0(k, improvedHash, level, v, kvOrNull, null)
+          else makeMutableTrie(leaf, new HashMap1(k, improvedHash, v, kvOrNull), level)
         case leaf: HashMapCollision1[A, B] =>
           if (leaf.hash == improvedHash)
-            leaf.updated0(kv._1, improvedHash, level, kv._2, kv, null)
-          else makeMutableTrie(leaf, new HashMap1(kv._1, improvedHash, kv._2, kv), level)
+            leaf.updated0(k, improvedHash, level, v, kvOrNull, null)
+          else makeMutableTrie(leaf, new HashMap1(k, improvedHash, v, kvOrNull), level)
 
         case trie: HashTrieMap[A, B] if isMutable((trie)) =>
           val arrayIndex = (improvedHash >>> level) & 0x1f
           val old = trie.elems(arrayIndex)
-          trie.elems(arrayIndex) = if (old eq null) new HashMap1(kv._1, improvedHash, kv._2, kv)
-          else addOne(old, kv, improvedHash, level + 5)
+          trie.elems(arrayIndex) = if (old eq null) new HashMap1(k, improvedHash, v, kvOrNull)
+          else addOne(old, k, v, kvOrNull, improvedHash, level + 5)
           trie
         case trie: HashTrieMap[A, B] =>
           val rawIndex = (improvedHash >>> level) & 0x1f
           val arrayIndex = compressedIndex(trie, rawIndex)
           if (arrayIndex == -1)
-            addOne(makeMutable(trie), kv, improvedHash, level)
+            addOne(makeMutable(trie), k, v, kvOrNull, improvedHash, level)
           else {
             val old = trie.elems(arrayIndex)
-            val merged = if (old eq null) new HashMap1(kv._1, improvedHash, kv._2, kv)
-            else addOne(old, kv, improvedHash, level + 5)
+            val merged = if (old eq null) new HashMap1(k, improvedHash, v, kvOrNull)
+            else addOne(old, k, v, kvOrNull, improvedHash, level + 5)
 
             if (merged eq old) trie
             else {
@@ -1264,7 +1277,7 @@ object HashMap extends ImmutableMapFactory[HashMap] with BitOperations.Int {
               newMutableTrie
             }
           }
-        case empty if empty eq EmptyHashMap => toNode.updated0(kv._1, improvedHash, level, kv._2, kv, null)
+        case empty if empty eq EmptyHashMap => toNode.updated0(k, improvedHash, level, v, kvOrNull, null)
       }
     }
     private def addHashMap(toNode: HashMap[A, B], toBeAdded: HashMap[A, B], level: Int): HashMap[A, B] = {

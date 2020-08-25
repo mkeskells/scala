@@ -20,6 +20,7 @@ import scala.annotation.unchecked.{uncheckedVariance => uV}
 import parallel.ParIterable
 import scala.collection.immutable.{::, List, Nil}
 import scala.language.higherKinds
+import scala.runtime.AbstractFunction1
 
 /** A template trait for traversable collections of type `Traversable[A]`.
  *
@@ -451,23 +452,80 @@ trait TraversableLike[+A, +Repr] extends Any
   }
 
   def groupBy[K](f: A => K): immutable.Map[K, Repr] = {
-    object m extends mutable.HashMap[K, Builder[A, Repr]] {
-      override def entriesIterator: Iterator[mutable.DefaultEntry[K, Builder[A, Repr]]] =
-        super.entriesIterator
+    this.seq match {
+      case //things with sensible isEmpty and "common" type
+        _: LinearSeq[A] |
+        _: IndexedSeq[A] |
+        _: mutable.Set[A] |
+        _: immutable.Set[A]
+        if (isEmpty) =>
+        //fast path, and avoid additional object creation
+        Map.empty
+      case _         =>
+        val m = new mutable.HashMap[K, Builder[A, Repr]]()
+        object grouper extends AbstractFunction1[A, Unit] with Function0[Builder[A, Repr]] {
+          override def apply(): mutable.Builder[A, Repr] = newBuilder
+          override def apply(elem: A): Unit =
+            (m.getOrElseUpdate(f(elem), apply)) += elem
+          @tailrec def applyAll(elems: LinearSeq[A]): Unit = {
+            if (!elems.isEmpty) {
+              apply(elems.head)
+              applyAll(elems.tail)
+            }
+          }
+        }
+        this.seq match {
+          case ls: LinearSeq[A] =>
+            grouper.applyAll(ls)
+          case _                =>
+            this foreach grouper
+        }
+        m.size match {
+          case 0 => Map.empty
+          case 1 =>
+            //coule be optimised
+            val e1 = m.entriesIteratorPrivate.next()
+            new immutable.Map.Map1(e1.key, e1.value.result())
+          case 2 =>
+            val it = m.entriesIteratorPrivate
+            val e1 = it.next()
+            val e2 = it.next()
+            new immutable.Map.Map2( //
+                                    e1.key, e1.value.result(), //
+                                    e2.key, e2.value.result()
+                                    )
+          case 3 =>
+            val it = m.entriesIteratorPrivate
+            val e1 = it.next()
+            val e2 = it.next()
+            val e3 = it.next()
+            new immutable.Map.Map3( //
+                                    e1.key, e1.value.result(), //
+                                    e2.key, e2.value.result(), //
+                                    e3.key, e3.value.result()
+                                    )
+          case 4 =>
+            val it = m.entriesIteratorPrivate
+            val e1 = it.next()
+            val e2 = it.next()
+            val e3 = it.next()
+            val e4 = it.next()
+            new immutable.Map.Map4( //
+                                    e1.key, e1.value.result(), //
+                                    e2.key, e2.value.result(), //
+                                    e3.key, e3.value.result(), //
+                                    e4.key, e4.value.result()
+                                    )
+          case _ =>
+            val it = m.entriesIteratorPrivate
+            val m1 = immutable.HashMap.newBuilderPrivate[K, Repr]
+            while (it.hasNext) {
+              val entry = it.next()
+              m1.+=((entry.key, entry.value.result()))
+            }
+            m1.result()
+        }
     }
-    val newBuilderFunction = () => newBuilder
-    for (elem <- this.seq) {
-      val key  = f(elem)
-      val bldr = m.getOrElseUpdate(key, newBuilderFunction())
-      bldr += elem
-    }
-    val it = m.entriesIterator
-    val m1 = if (m.size > 4) immutable.HashMap.newBuilder[K, Repr] else immutable.Map.newBuilder[K, Repr]
-    while (it.hasNext) {
-      val entry = it.next()
-      m1.+=((entry.key, entry.value.result()))
-    }
-    m1.result()
   }
 
   def forall(p: A => Boolean): Boolean = {

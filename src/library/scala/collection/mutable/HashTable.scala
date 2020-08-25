@@ -225,6 +225,7 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
       res.asInstanceOf[Entry]
     }
   }
+  private[scala] def entriesIteratorPrivate = entriesIterator
 
   /** Avoid iterator for a 2x faster traversal. */
   protected def foreachEntry[U](f: Entry => U) {
