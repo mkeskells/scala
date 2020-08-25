@@ -516,13 +516,19 @@ trait TraversableLike[+A, +Repr] extends Any
                                     e3.key, e3.value.result(), //
                                     e4.key, e4.value.result()
                                     )
+            //maybe
+//          case _ =>
+//            val it = m.entriesIteratorPrivate
+//            val m1 = immutable.HashMap.newBuilderPrivate[K, Repr]
+//            while (it.hasNext) {
+//              val entry = it.next()
+//              m1.add(entry.key, entry.value.result())
+//            }
+//            m1.result()
+            //but probably better
           case _ =>
-            val it = m.entriesIteratorPrivate
             val m1 = immutable.HashMap.newBuilderPrivate[K, Repr]
-            while (it.hasNext) {
-              val entry = it.next()
-              m1.+=((entry.key, entry.value.result()))
-            }
+            m.foreachEntryPrivate(entry => m1.add(entry.key, entry.value.result()))
             m1.result()
         }
     }
