@@ -462,11 +462,61 @@ trait TraversableLike[+A, +Repr] extends Any
         //fast path, and avoid additional object creation
         Map.empty
       case _         =>
-        val m = new mutable.HashMap[K, Builder[A, Repr]]()
         object grouper extends AbstractFunction1[A, Unit] with Function0[Builder[A, Repr]] {
+          var m: mutable.HashMap[K, Builder[A, Repr]] = null
+          var k1: K = null.asInstanceOf[K]
+          var b1: Builder[A, Repr] = null
+          var k2: K = null.asInstanceOf[K]
+          var b2: Builder[A, Repr] = null
+          var k3: K = null.asInstanceOf[K]
+          var b3: Builder[A, Repr] = null
+          var k4: K = null.asInstanceOf[K]
+          var b4: Builder[A, Repr] = null
           override def apply(): mutable.Builder[A, Repr] = newBuilder
-          override def apply(elem: A): Unit =
-            (m.getOrElseUpdate(f(elem), apply)) += elem
+          override def apply(elem: A): Unit = {
+            val key = f(elem)
+            if (m ne null)
+              (m.getOrElseUpdate(key, apply)) += elem
+
+            else if (k1.asInstanceOf[AnyRef] eq null) {
+              k1 = key
+              b1 = (newBuilder += elem)
+            } else if (key == k1)
+              b1 += elem
+
+            else if (k2.asInstanceOf[AnyRef] eq null) {
+              k2 = key
+              b2 = (newBuilder += elem)
+            } else if (key == k2)
+              b2 += elem
+
+            else if (k3.asInstanceOf[AnyRef] eq null) {
+              k3 = key
+              b3 = (newBuilder += elem)
+            } else if (key == k3)
+              b3 += elem
+
+            else if (k4.asInstanceOf[AnyRef] eq null) {
+              k4 = key
+              b4 = (newBuilder += elem)
+            } else if (key == k4)
+              b4 += elem
+
+            else {
+              m = mutable.HashMap.empty[K, Builder[A, Repr]]
+              m(k1) = b1
+              m(k2) = b2
+              m(k3) = b3
+              m(k4) = b4
+              m(key) = newBuilder += elem
+            }
+          }
+          def size =
+            if (m ne null) m.size
+            else if (k1.asInstanceOf[AnyRef] eq null) 0
+            else if (k2.asInstanceOf[AnyRef] eq null) 1
+            else if (k3.asInstanceOf[AnyRef] eq null) 2
+            else if (k3.asInstanceOf[AnyRef] eq null) 3 else 4
           @tailrec def applyAll(elems: LinearSeq[A]): Unit = {
             if (!elems.isEmpty) {
               apply(elems.head)
@@ -480,45 +530,31 @@ trait TraversableLike[+A, +Repr] extends Any
           case _                =>
             this foreach grouper
         }
-        m.size match {
+        grouper.size match {
           case 0 => Map.empty
           case 1 =>
-            //coule be optimised
-            val e1 = m.entriesIteratorPrivate.next()
-            new immutable.Map.Map1(e1.key, e1.value.result())
+            new immutable.Map.Map1(grouper.k1, grouper.b1.result())
           case 2 =>
-            val it = m.entriesIteratorPrivate
-            val e1 = it.next()
-            val e2 = it.next()
             new immutable.Map.Map2( //
-                                    e1.key, e1.value.result(), //
-                                    e2.key, e2.value.result()
+                                    grouper.k1, grouper.b1.result(), //
+                                    grouper.k2, grouper.b2.result()
                                     )
           case 3 =>
-            val it = m.entriesIteratorPrivate
-            val e1 = it.next()
-            val e2 = it.next()
-            val e3 = it.next()
             new immutable.Map.Map3( //
-                                    e1.key, e1.value.result(), //
-                                    e2.key, e2.value.result(), //
-                                    e3.key, e3.value.result()
+                                    grouper.k1, grouper.b1.result(), //
+                                    grouper.k2, grouper.b2.result(), //
+                                    grouper.k3, grouper.b3.result()
                                     )
           case 4 =>
-            val it = m.entriesIteratorPrivate
-            val e1 = it.next()
-            val e2 = it.next()
-            val e3 = it.next()
-            val e4 = it.next()
             new immutable.Map.Map4( //
-                                    e1.key, e1.value.result(), //
-                                    e2.key, e2.value.result(), //
-                                    e3.key, e3.value.result(), //
-                                    e4.key, e4.value.result()
+                                    grouper.k1, grouper.b1.result(), //
+                                    grouper.k2, grouper.b2.result(), //
+                                    grouper.k3, grouper.b3.result(), //
+                                    grouper.k4, grouper.b4.result()
                                     )
             //maybe
 //          case _ =>
-//            val it = m.entriesIteratorPrivate
+//            val it = grouper.m.entriesIteratorPrivate
 //            val m1 = immutable.HashMap.newBuilderPrivate[K, Repr]
 //            while (it.hasNext) {
 //              val entry = it.next()
@@ -528,7 +564,7 @@ trait TraversableLike[+A, +Repr] extends Any
             //but probably better
           case _ =>
             val m1 = immutable.HashMap.newBuilderPrivate[K, Repr]
-            m.foreachEntryPrivate(entry => m1.add(entry.key, entry.value.result()))
+            grouper.m.foreachEntryPrivate(entry => m1.add(entry.key, entry.value.result()))
             m1.result()
         }
     }
