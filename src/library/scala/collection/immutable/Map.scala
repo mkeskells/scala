@@ -15,6 +15,7 @@ package collection
 package immutable
 
 import generic._
+import scala.runtime.AbstractFunction1
 import scala.util.hashing.MurmurHash3
 
 /**
@@ -588,10 +589,14 @@ object Map extends ImmutableMapFactory[Map] {
         cbf eq Map.canBuildFrom
     }
   }
+  private [Map] val getOrElseFlag  = new AbstractFunction1[Any, AnyRef] {
+    override def apply(v1: Any): AnyRef = this
+  }
 
   /** Builder for Map.
    */
-  private final class MapBuilderImpl[K, V] extends mutable.ReusableBuilder[(K,V), Map[K, V]] {
+  private final class MapBuilderImpl[K, V] extends mutable.ReusableBuilder[(K,V), Map[K, V]]
+    with mutable.EfficientMapBuilder[K, V] {
 
     private[this] var elems: Map[K, V] = Map.empty[K, V]
     private[this] var switchedToHashMapBuilder: Boolean = false
@@ -615,20 +620,24 @@ object Map extends ImmutableMapFactory[Map] {
       hashMapBuilder ++= elems
     }
 
-    override def +=(elem: (K, V)): MapBuilderImpl.this.type = {
+    private[collection] def addOne(k: K, v: V, kvOrNull: (K, V)): Unit = {
       if (switchedToHashMapBuilder) {
-        hashMapBuilder += elem
+        hashMapBuilder.addOne(k, v, kvOrNull)
       } else if (elems.size < 4) {
-        elems = elems + elem
+        elems = elems.updated(k, v)
       } else {
         // assert(elems.size == 4)
-        elems.get(elem._1) match {
-          case Some(x) if x == elem._2 => ()
-          case _ =>
+        val currentOrFlag = elems.getOrElse(k, Map.getOrElseFlag).asInstanceOf[AnyRef]
+        if (currentOrFlag eq Map.getOrElseFlag) {
           convertToHashMapBuilder()
-          hashMapBuilder += elem
-        }
+          hashMapBuilder.addOne(k, v, kvOrNull)
+        } else if (currentOrFlag ne v.asInstanceOf[AnyRef]) {
+          elems = elems.updated(k, v)
+        } //else we can leave it as it is
       }
+    }
+    override def +=(elem: (K, V)): MapBuilderImpl.this.type = {
+      addOne(elem._1, elem._2, elem)
       this
     }
 
