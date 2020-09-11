@@ -128,6 +128,7 @@ sealed class ListMap[A, +B] extends AbstractMap[A, B]
   protected def next: ListMap[A, B] = throw new NoSuchElementException("next of empty map")
 
   override def stringPrefix = "ListMap"
+  private[ListMap] def newNode[B1 >: B](k: A, v: B1): Node[B1] = new Node(k, v)
 
   /**
     * Represents an entry in the `ListMap`.
@@ -135,6 +136,12 @@ sealed class ListMap[A, +B] extends AbstractMap[A, B]
   @SerialVersionUID(-6453056603889598734L)
   protected class Node[B1 >: B](override protected val key: A,
                                 override protected val value: B1) extends ListMap[A, B1] with Serializable {
+    def filterUnordered(p: ((A, B1)) => Boolean, negate: Boolean): ListMap[A, B1] = ???
+
+    def merge0[B2 >: B1](kvs: Node[B2], merger: HashMap.Merger[A, B2]): Node[B2] = ???
+
+    def transformInordered[W](f: (A, B) => W): Node[W] = ???
+
 
     override def size: Int = sizeInternal(this, 0)
 
@@ -158,29 +165,128 @@ sealed class ListMap[A, +B] extends AbstractMap[A, B]
       else if (k == cur.key) Some(cur.value)
       else getInternal(cur.next, k)
 
-    override def contains(k: A): Boolean = containsInternal(this, k)
+    override def contains(k: A): Boolean = findIndexInternal(k,this, 0) != -1
 
-    @tailrec private[this] def containsInternal(cur: ListMap[A, B1], k: A): Boolean =
-      if(cur.isEmpty) false
-      else if (k == cur.key) true
-      else containsInternal(cur.next, k)
+    override def updated[B2 >: B1](k: A, v: B2): ListMap[A, B2] = updatedInternal(k, v, null, null)
 
-    override def updated[B2 >: B1](k: A, v: B2): ListMap[A, B2] = {
-      val m = this - k
-      new m.Node[B2](k, v)
+    /**
+     * update reflecting merger semantics
+     * @param merger merger to consider. If the merger is null, then strict order is applied
+     * @return
+     */
+    private[immutable] def updatedInternal[B2 >: B1](k: A, v: B2, kvOrNull: (A, B2), merger: HashMap.Merger[A, B2]): ListMap[A, B2] = {
+      val atIndex = findIndexInternal(k, this, 0)
+      if (atIndex == -1) new Node[B2](k, v)
+      else if (atIndex == 0 && (merger eq null) && (value.asInstanceOf[AnyRef] eq v.asInstanceOf[AnyRef]))
+        this.asInstanceOf[ListMap[A, B2]]
+      else {
+        val node = getAtIndex(atIndex, this)
+        if (merger eq null)
+          removeAtIndex(atIndex).newNode[B2](node.key:A, v:B2)
+        else if (merger eq HashMap.defaultMerger)
+          //prefer the existing
+          this
+        else if (merger eq HashMap.defaultMerger.invert)
+          //prefer the new k/v
+          if ((node.value.asInstanceOf[AnyRef] eq v.asInstanceOf[AnyRef]) &&
+              (node.key.asInstanceOf[AnyRef] eq k.asInstanceOf[AnyRef]))
+            this
+          else removeAtIndex(atIndex).newNode[B2](k, v)
+        else if (merger eq HashMap.concatMerger)
+          // prefer existing key and new value
+          if (node.value.asInstanceOf[AnyRef] eq v.asInstanceOf[AnyRef])
+            this
+          else removeAtIndex(atIndex).newNode[B2](node.key, v)
+        else if (merger eq HashMap.concatMerger.invert)
+          //prefer the new k and old value
+          if (node.key.asInstanceOf[AnyRef] eq k.asInstanceOf[AnyRef])
+            this
+          else removeAtIndex(atIndex).newNode[B2](k, node.value)
+        else {
+          val kv = if (kvOrNull eq null) (k,v) else kvOrNull
+          val merged = merger((node.key, node.value), kv)
+          if ((merged._1.asInstanceOf[AnyRef] eq node.key.asInstanceOf[AnyRef]) &&
+             (merged._2.asInstanceOf[AnyRef] eq node.value.asInstanceOf[AnyRef]))
+            this
+          else removeAtIndex(atIndex).newNode[B2](merged._1, merged._2)
+        }
+      }
     }
 
-    override def +[B2 >: B1](kv: (A, B2)): ListMap[A, B2] = {
-      val m = this - kv._1
-      new m.Node[B2](kv._1, kv._2)
+
+    override def head: (A, B1) = (key, value)
+    override def tail: ListMap[A, B1] = drop(1)
+    override def drop(n: Int): ListMap[A, B1] = dropInternal(this, n)
+    @tailrec final def dropInternal(cur: ListMap[A, B1], n: Int): ListMap[A, B1] = {
+      if (n <= 0 || cur.isEmpty) cur
+      else dropInternal(cur.next, n - 1)
     }
 
-    override def -(k: A): ListMap[A, B1] = removeInternal(k, this, Nil)
+    override def +[B2 >: B1](kv: (A, B2)): ListMap[A, B2] = updated(kv._1, kv._2)
 
-    @tailrec private[this] def removeInternal(k: A, cur: ListMap[A, B1], acc: List[ListMap[A, B1]]): ListMap[A, B1] =
-      if (cur.isEmpty) acc.last
-      else if (k == cur.key) (cur.next /: acc) { case (t, h) => new t.Node(h.key, h.value) }
-      else removeInternal(k, cur.next, cur :: acc)
+    override def -(k: A): ListMap[A, B1] = removeAtIndex(findIndexInternal(k, this, 0))
+
+    @tailrec private[this] def getAtIndex(index: Int, cur: ListMap[A, B1]): ListMap[A, B1] =
+      if (index == 0) cur
+      else getAtIndex(index -1, cur.next)
+
+    @tailrec private[this] def findIndexInternal(k: A, cur: ListMap[A, B1], currentIndex: Int): Int =
+      if (cur.isEmpty) -1
+      else if (k == cur.key) currentIndex
+      else findIndexInternal(k, cur.next, currentIndex + 1)
+
+    private[this] def removeAtIndex(index: Int): ListMap[A, B1] = {
+      index match {
+        case -1 => this
+        case 0 => next
+        case 1 =>
+          val n0 = this
+          val n2 = next.next
+          n2.newNode(n0.key, n0.value)
+        case 2 =>
+          val n0 = this
+          val n1 = n0.next
+          val n3 = n1.next.next
+          val new1 = n3.newNode(n1.key, n1.value)
+          val new0 = new1.newNode(n0.key, n0.value)
+          new0
+        case 3 =>
+          val n0 = this
+          val n1 = n0.next
+          val n2 = n1.next
+          val n4 = n2.next.next
+          val new2 = n4.newNode(n2.key, n2.value)
+          val new1 = new2.newNode(n1.key, n1.value)
+          val new0 = new1.newNode(n0.key, n0.value)
+          new0
+        case 4 =>
+          val n0 = this
+          val n1 = n0.next
+          val n2 = n1.next
+          val n3 = n2.next
+          val n5 = n3.next.next
+          val new3 = n5.newNode(n3.key, n3.value)
+          val new2 = new3.newNode(n2.key, n2.value)
+          val new1 = new2.newNode(n1.key, n1.value)
+          val new0 = new1.newNode(n0.key, n0.value)
+          new0
+        case _ =>
+          val nodes = new Array[Node[B1]](index-1)
+          @tailrec def fill(index:Int, cur: ListMap[A, B1]): ListMap[A, B1] =
+            if (nodes.length >= index) cur.next
+            else {
+              nodes(index) = cur.asInstanceOf[Node[B1]]
+              fill(index + 1, cur.next)
+            }
+          @tailrec def makeNodes(index:Int, tail: ListMap[A, B1]): ListMap[A, B1] =
+            if (index < 0) tail
+            else {
+              val from = nodes(index)
+              makeNodes(index -1, tail.newNode(from.key, from.value))
+            }
+          makeNodes(index -1,fill(index-1, this))
+      }
+    }
 
     override protected def next: ListMap[A, B1] = ListMap.this
 
