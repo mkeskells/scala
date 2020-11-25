@@ -41,11 +41,11 @@ private[collection] object NewRedBlackTree {
     else if (cmp > 0) lookup(tree.right, x)
     else tree
   }
-  private[immutable] abstract class Helper[A](implicit val ordering: Ordering[A]) {
-    @inline private[this] def result[A, B](in: Tree[A, B]): Tree[A, B] = {
+  private[immutable] abstract class Helper[A, B](implicit val ordering: Ordering[A]) {
+    @inline private[this] def result(in: Tree[A, B]): Tree[A, B] = {
       NewRedBlackTree.result(null, in)
     }
-    def beforePublish[B](tree: Tree[A, B]): Tree[A, B] = {
+    def beforePublish(tree: Tree[A, B]): Tree[A, B] = {
       if (tree eq null) tree
       else if (tree.isMutable) {
         val res = result(tree.mutableBlack.makeImmutable)
@@ -55,7 +55,7 @@ private[collection] object NewRedBlackTree {
     }
     /** Create a new balanced tree where `newLeft` replaces `tree.left`.
      * tree and newLeft are never null */
-    protected[this] final def mutableBalanceLeft[A, B, B1 >: B](tree: Tree[A, B], newLeft: Tree[A, B1]): Tree[A, B1] = {
+    protected[this] final def mutableBalanceLeft[B1 >: B](tree: Tree[A, B], newLeft: Tree[A, B1]): Tree[A, B1] = {
       // Parameter trees
       //            tree              |                   newLeft
       //     --      KV         R     |    nl.L            nl.KV      nl.R
@@ -64,13 +64,13 @@ private[collection] object NewRedBlackTree {
       //as the balance operations may mutate the same object
       //but that check was mostly to avoid the object creation
       if (newLeft.isRed) {
-        val newLeft_left = newLeft.left
+        val newLeft_left  = newLeft.left
         val newLeft_right = newLeft.right
         if (isRedTree(newLeft_left)) {
           //                      RED
           //    black(nl.L)      nl.KV      black
           //                          nl.R    KV   R
-          val resultLeft = newLeft_left.mutableBlack
+          val resultLeft  = newLeft_left.mutableBlack
           val resultRight = tree.mutableBlackWithLeft(newLeft_right)
 
           newLeft.mutableWithLeftRight(resultLeft, resultRight)
@@ -81,7 +81,7 @@ private[collection] object NewRedBlackTree {
 
           val newLeft_right_right = newLeft_right.right
 
-          val resultLeft = newLeft.mutableBlackWithRight(newLeft_right.left)
+          val resultLeft  = newLeft.mutableBlackWithRight(newLeft_right.left)
           val resultRight = tree.mutableBlackWithLeft(newLeft_right_right)
 
           newLeft_right.mutableWithLeftRight(resultLeft, resultRight)
@@ -98,7 +98,7 @@ private[collection] object NewRedBlackTree {
     }
     /** Create a new balanced tree where `newRight` replaces `tree.right`.
      * tree and newRight are never null */
-    protected[this] final def mutableBalanceRight[A, B, B1 >: B](tree: Tree[A, B], newRight: Tree[A, B1]): Tree[A, B1] = {
+    protected[this] final def mutableBalanceRight[B1 >: B](tree: Tree[A, B], newRight: Tree[A, B1]): Tree[A, B1] = {
       // Parameter trees
       //            tree                |                             newRight
       //      L      KV         --      |              nr.L            nr.KV      nr.R
@@ -113,7 +113,7 @@ private[collection] object NewRedBlackTree {
           //              black           nr.L.KV          black
           //     L         KV   nr.L.L             nr.L.R  nr.KV    nr.R
 
-          val resultLeft = tree.mutableBlackWithRight(newRight_left.left)
+          val resultLeft  = tree.mutableBlackWithRight(newRight_left.left)
           val resultRight = newRight.mutableBlackWithLeft(newRight_left.right)
 
           newRight_left.mutableWithLeftRight(resultLeft, resultRight)
@@ -125,7 +125,7 @@ private[collection] object NewRedBlackTree {
             //              black           nr.KV            black(nr.R)
             //     L         KV   nr.L
 
-            val resultLeft = tree.mutableBlackWithRight(newRight_left)
+            val resultLeft  = tree.mutableBlackWithRight(newRight_left)
             val resultRight = newRight_right.mutableBlack
 
             newRight.mutableWithLeftRight(resultLeft, resultRight)
@@ -142,7 +142,7 @@ private[collection] object NewRedBlackTree {
       }
     }
   }
-  private[immutable] class SetHelper[A](implicit ordering: Ordering[A]) extends Helper[A] {
+  private[immutable] class SetHelper[A](implicit ordering: Ordering[A]) extends Helper[A, Any] {
     protected[this] final def mutableUpd(tree: Tree[A, Any], k: A): Tree[A, Any] =
       if (tree eq null) {
         mutableRedTree(k, (), null, null)
@@ -161,7 +161,7 @@ private[collection] object NewRedBlackTree {
         else tree
       }
   }
-  private[immutable] class MapHelper[A, B](implicit ordering: Ordering[A]) extends Helper[A] {
+  private[immutable] class MapHelper[A, B](implicit ordering: Ordering[A]) extends Helper[A, B] {
     protected[this] final def mutableUpd[B1 >: B](tree: Tree[A, B], k: A, v: B1): Tree[A, B1] =
       if (tree eq null) {
         mutableRedTree(k, v, null, null)
@@ -844,8 +844,10 @@ private[collection] object NewRedBlackTree {
   private[NewRedBlackTree] final val initialBlackCount = colourBit
   private[NewRedBlackTree] final val initialRedCount = 0
 
-  @`inline` private[NewRedBlackTree] def mutableRedTree[A, B](key: A, value: B, left: Tree[A, B], right: Tree[A, B]) = new Tree[A,B](key, value.asInstanceOf[AnyRef], left, right, initialRedCount)
-  @`inline` private[NewRedBlackTree] def mutableBlackTree[A, B](key: A, value: B, left: Tree[A, B], right: Tree[A, B]) = new Tree[A,B](key, value.asInstanceOf[AnyRef], left, right, initialBlackCount)
+  @`inline` private[NewRedBlackTree] def mutableRedTree[A, B](key: A, value: B, left: Tree[A, B], right: Tree[A, B]) =
+    new Tree[A,B](key, value.asInstanceOf[AnyRef], left, right, initialRedCount)
+  @`inline` private[NewRedBlackTree] def mutableBlackTree[A, B](key: A, value: B, left: Tree[A, B], right: Tree[A, B]) =
+    new Tree[A,B](key, value.asInstanceOf[AnyRef], left, right, initialBlackCount)
 
   /** create a new immutable red tree.
    * left and right may be null
