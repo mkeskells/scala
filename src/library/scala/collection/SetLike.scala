@@ -176,12 +176,7 @@ self =>
             (repr /: elems.seq) (_ + _)
         }
       case ts1: TreeSet[A] =>
-        elems match {
-          case ts2: TreeSet[A] if ts1.ordering == ts2.ordering  =>
-            ts1.addAllTreeSetImpl(ts2).asInstanceOf[This]
-          case _ =>
-            (repr /: elems.seq) (_ + _)
-        }
+        ts1.addAllTreeSetImpl(elems).asInstanceOf[This]
       case _ =>
         (repr /: elems.seq) (_ + _)
 

@@ -32,13 +32,16 @@ object TreeMap extends ImmutableSortedMapFactory[TreeMap] {
   /** $sortedMapCanBuildFromInfo */
   implicit def canBuildFrom[A, B](implicit ord: Ordering[A]): CanBuildFrom[Coll, (A, B), TreeMap[A, B]] = new SortedMapCanBuildFrom[A, B]
 
-  override def newBuilder[A, B](implicit ord: Ordering[A]): mutable.Builder[(A, B), TreeMap[A, B]] = new TreeMapBuilder
+  override def newBuilder[A, B](implicit ord: Ordering[A]): mutable.Builder[(A, B), TreeMap[A, B]] =
+    new TreeMapBuilder(null)
+  private def newBuilderInternal[A, B](initialTree: RB.Tree[A, B])(implicit ord: Ordering[A]): TreeMapBuilder[A, B] =
+    new TreeMapBuilder(initialTree)
 
-  private class TreeMapBuilder[A, B](implicit ordering: Ordering[A])
+  private class TreeMapBuilder[A, B](initialTree: RB.Tree[A, B])(implicit ordering: Ordering[A])
     extends RB.MapHelper[A, B]
       with Builder[(A, B), TreeMap[A, B]] {
     type Tree = RB.Tree[A, B]
-    private var tree:Tree = null
+    private var tree:Tree = initialTree
 
     def +=(elem: (A, B)): this.type = {
       tree = mutableUpd(tree, elem._1, elem._2)
@@ -61,20 +64,25 @@ object TreeMap extends ImmutableSortedMapFactory[TreeMap] {
       }
     }
 
-    override def ++=(xs: TraversableOnce[(A, B)]): this.type = {
+    override def ++=(xs: TraversableOnce[(A, B)]): this.type = addAll(xs)
+
+    private[TreeMap] def addAll(xs: GenTraversableOnce[(A, B)]): this.type = {
       xs match {
-        // TODO consider writing a mutable-safe union for TreeSet/TreeMap builder ++=
-        // for the moment we have to force immutability before the union
-        // which will waste some time and space
-        // calling `beforePublish` makes `tree` immutable
         case ts: TreeMap[A, B] if ts.ordering == ordering =>
-          if (tree eq null) tree = ts.tree0
-          else tree = RB.union(beforePublish(tree), ts.tree0)
+          tree = mutableUnion(tree, ts.tree0)
         case that: HasForeachEntry[A, B] =>
           //add avoiding creation of tuples
           adder.addForEach(that)
+        case that: LinearSeq[(A, B)] =>
+          @tailrec def loop(xs: scala.collection.LinearSeq[(A, B)]) {
+            if (xs.nonEmpty) {
+              this += xs.head
+              loop(xs.tail)
+            }
+          }
+          loop(that)
         case _ =>
-          super.++=(xs)
+          xs foreach +=
       }
       this
     }
@@ -82,8 +90,9 @@ object TreeMap extends ImmutableSortedMapFactory[TreeMap] {
     override def clear(): Unit = {
       tree = null
     }
+    private[TreeMap] def resultTree(): Tree = beforePublish(tree)
 
-    override def result(): TreeMap[A, B] = new TreeMap[A, B](beforePublish(tree))
+    override def result(): TreeMap[A, B] = new TreeMap[A, B](resultTree())
   }
   private val legacySerialisation = System.getProperty("scala.collection.immutable.TreeMap.newSerialisation", "false") == "false"
 
@@ -256,8 +265,13 @@ final class TreeMap[A, +B] private (tree: RB.Tree[A, B])(implicit val ordering: 
    *  @param elems the remaining elements to add.
    *  @return      a new $coll with the updated bindings
    */
-  override def + [B1 >: B] (elem1: (A, B1), elem2: (A, B1), elems: (A, B1) *): TreeMap[A, B1] =
-    this + elem1 + elem2 ++ elems
+  override def + [B1 >: B] (elem1: (A, B1), elem2: (A, B1), elems: (A, B1) *): TreeMap[A, B1] = {
+    val adder = TreeMap.newBuilderInternal[A, B1](tree)
+    adder += elem1
+    adder += elem2
+    adder ++= elems
+    newMapOrSelf(adder.resultTree)
+  }
 
   /** Adds a number of elements provided by a traversable object
    *  and returns a new collection with the added elements.
@@ -265,35 +279,25 @@ final class TreeMap[A, +B] private (tree: RB.Tree[A, B])(implicit val ordering: 
    *  @param xs     the traversable object.
    */
   override def ++[B1 >: B] (xs: GenTraversableOnce[(A, B1)]): TreeMap[A, B1] = {
+    def defaultAddAll: TreeMap[A, B1] =
+      newMapOrSelf(TreeMap.newBuilderInternal[A, B1](tree).addAll(xs).resultTree)
     xs match {
+        //avoid creating the builder if it trivial
       case tm: TreeMap[A, B] if ordering == tm.ordering =>
-        newMapOrSelf(RB.union(tree, tm.tree0))
-      case ls: LinearSeq[(A,B1)] =>
-        if (ls.isEmpty) this //to avoid the creation of the adder
-        else {
-          val adder = new Adder[B1]
-          adder addAll ls
-          newMapOrSelf(adder.finalTree)
-        }
+        if ((tree eq tm.tree0) || (tm.tree0 eq null)) this
+        else if (tree eq null) tm
+        else defaultAddAll
+      case fe: HasForeachEntry[A, B1] =>
+        if (fe.isEmpty) this
+        else defaultAddAll
+      case ls: LinearSeq[(A, B1)] =>
+        if (ls.isEmpty) this
+        else defaultAddAll
+      case ls: Vector[(A, B1)] =>
+        if (ls.isEmpty) this
+        else defaultAddAll
       case _ =>
-        val adder = new Adder[B1]
-        xs foreach adder
-        newMapOrSelf(adder.finalTree)
-    }
-  }
-  private final class Adder[B1 >: B]
-    extends RB.MapHelper[A, B1] with Function1[(A, B1), Unit] {
-    private var currentMutableTree: RB.Tree[A,B1] = tree0
-    def finalTree = beforePublish(currentMutableTree)
-    override def apply(kv: (A, B1)): Unit = {
-      currentMutableTree = mutableUpd(currentMutableTree, kv._1, kv._2)
-    }
-    @tailrec def addAll(ls: LinearSeq[(A, B1)]): Unit = {
-      if (!ls.isEmpty) {
-        val kv = ls.head
-        currentMutableTree = mutableUpd(currentMutableTree, kv._1, kv._2)
-        addAll(ls.tail)
-      }
+        defaultAddAll
     }
   }
 

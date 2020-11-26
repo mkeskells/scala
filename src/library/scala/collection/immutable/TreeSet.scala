@@ -19,6 +19,7 @@ import java.io.IOException
 import generic._
 import immutable.{NewRedBlackTree => RB}
 import mutable.Builder
+import scala.annotation.tailrec
 import scala.runtime.AbstractFunction1
 
 /** $factoryInfo
@@ -46,18 +47,22 @@ object TreeSet extends ImmutableSortedSetFactory[TreeSet] {
 
     override def ++=(xs: TraversableOnce[A]): this.type = {
       xs match {
-          // TODO consider writing a mutable-safe union for TreeSet/TreeMap builder ++=
-          // for the moment we have to force immutability before the union
-          // which will waste some time and space
-          // calling `beforePublish` makes `tree` immutable
         case ts: TreeSet[A] if ts.ordering == ordering =>
           if (tree eq null) tree = ts.tree
-          else tree = RB.union(beforePublish(tree), ts.tree)(ordering)
+          else if (ts.tree ne null) tree = mutableUnion(tree, ts.tree)
         case ts: TreeMap[A, _] if ts.ordering == ordering =>
           if (tree eq null) tree = ts.tree0
-          else tree = RB.union(beforePublish(tree), ts.tree0)(ordering)
+          else if (ts.tree0 ne null) tree = mutableUnion(tree, ts.tree0)
+        case that: LinearSeq[A] =>
+          @tailrec def loop(xs: LinearSeq[A]) {
+            if (xs.nonEmpty) {
+              this += xs.head
+              loop(xs.tail)
+            }
+          }
+          loop(that)
         case _ =>
-          super.++=(xs)
+          xs foreach +=
       }
       this
     }
@@ -66,7 +71,8 @@ object TreeSet extends ImmutableSortedSetFactory[TreeSet] {
       tree = null
     }
 
-    override def result(): TreeSet[A] = new TreeSet[A](beforePublish(tree))(ordering)
+    private def resultTree(): Tree = beforePublish(tree)
+    override def result(): TreeSet[A] = new TreeSet[A](resultTree)(ordering)
   }
   private val legacySerialisation = System.getProperty("scala.collection.immutable.TreeSet.newSerialisation", "false") == "false"
 
@@ -123,6 +129,7 @@ final class TreeSet[A] private[immutable] (private[immutable] val tree: RB.Tree[
 
   override def stringPrefix = "TreeSet"
 
+  override protected[this] def newBuilder: mutable.Builder[A, TreeSet[A]] = TreeSet.newBuilder
   override def size = RB.count(tree)
 
   override def head = RB.smallest(tree).key
@@ -258,15 +265,41 @@ final class TreeSet[A] private[immutable] (private[immutable] val tree: RB.Tree[
     }
   }
 
-  private [collection] def addAllTreeSetImpl(ts: TreeSet[A]): TreeSet[A] = {
-    assert (ordering == ts.ordering)
-    newSetOrSelf(RB.union(tree, ts.tree))
+  private [collection] def addAllTreeSetImpl(that: GenTraversableOnce[A]): TreeSet[A] = {
+    def defaultAddAllTreeSetImpl = {
+      val b = newBuilder
+      b ++= thisCollection
+      b ++= that.seq
+      b.result
+
+    }
+    that match {
+      // avoid the creation of the builder for the trivial cases
+      case ts: TreeSet[A] =>
+        if ((ts.tree eq tree) || (ts.tree eq null)) this
+        else if (tree eq null) ts
+        else defaultAddAllTreeSetImpl
+
+      // we can't test isEmpty on all collections as some implementations consume the values to check
+      // so just a few common ones
+      case ls: LinearSeq[A] =>
+        if (ls.isEmpty) this
+        else defaultAddAllTreeSetImpl
+      case ls: Vector[A] =>
+        if (ls.isEmpty) this
+        else defaultAddAllTreeSetImpl
+      case ls: Set[A] =>
+        if (ls.isEmpty) this
+        else defaultAddAllTreeSetImpl
+      case _                                                                                           =>
+        defaultAddAllTreeSetImpl
+    }
   }
 
   private[scala] def addAllImpl[B >: A, That](that: GenTraversableOnce[B])(implicit bf: CanBuildFrom[TreeSet[A], B, That]): That = {
     that match {
       case ts: TreeSet[A] if sameCBF(bf) =>
-        newSetOrSelf(RB.union(tree, ts.tree)).asInstanceOf[That]
+        addAllTreeSetImpl(ts).asInstanceOf[That]
       case _ =>
         val b = bf(repr)
         b ++= thisCollection
