@@ -141,45 +141,61 @@ private[collection] object NewRedBlackTree {
         tree.mutableWithRight(newRight)
       }
     }
+    // Bulk operations based on "Just Join for Parallel Ordered Sets" (https://www.cs.cmu.edu/~guyb/papers/BFS16.pdf)
+    // We don't store the black height in the tree so we pass it down into the join methods and derive the black height
+    // of child nodes from it. Where possible the black height is used directly instead of deriving the rank from it.
+    // Our trees are supposed to have a black root so we always blacken as the last step of union/intersect/difference.
+    // Additionally we pass `kvPossibleTree`. This may be null, but may contain a tree which can be reused (if the key matched the need)
 
-    private[this] def mutableJoinRight(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B], bhtl: Int, rtr: Int): Tree[A, B] = {
+    private[this] def mutableJoinRight(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B], bhtl: Int, rtr: Int, kvPossibleTree: Tree[A, B]): Tree[A, B] = {
       val rtl = rank(tl, bhtl)
-      if (rtl == (rtr / 2) * 2) mutableRedTree(k, v, tl, tr)
+      if (rtl == (rtr / 2) * 2) reuseOrMakeMutableTree(kvPossibleTree, false, k, v, tl, tr)
       else {
         val tlBlack = isBlackTree(tl)
         val bhtlr   = if (tlBlack) bhtl - 1 else bhtl
-        val ttr     = mutableJoinRight(tl.right, k, v, tr, bhtlr, rtr)
+        val ttr     = mutableJoinRight(tl.right, k, v, tr, bhtlr, rtr, kvPossibleTree)
         if (tlBlack && ttr.isRed && isRedTree(ttr.right))
           ttr.mutableWithLeftRight(tl.mutableWithRight(ttr.left), ttr.right.mutableBlack)
         else tl.mutableWithRight(ttr)
       }
     }
 
-    private[this] def mutableJoinLeft(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B], rtl: Int, bhtr: Int): Tree[A, B] = {
+    private[this] def mutableJoinLeft(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B], rtl: Int, bhtr: Int, kvPossibleTree: Tree[A, B]): Tree[A, B] = {
       val rtr = rank(tr, bhtr)
-      if (rtr == (rtl / 2) * 2) mutableRedTree(k, v, tl, tr)
+      if (rtr == (rtl / 2) * 2) reuseOrMakeMutableTree(kvPossibleTree, false, k, v, tl, tr)
       else {
         val trBlack = isBlackTree(tr)
         val bhtrl   = if (trBlack) bhtr - 1 else bhtr
-        val ttl     = mutableJoinLeft(tl, k, v, tr.left, rtl, bhtrl)
+        val ttl     = mutableJoinLeft(tl, k, v, tr.left, rtl, bhtrl, kvPossibleTree)
         if (trBlack && ttl.isRed && isRedTree(ttl.left))
           ttl.mutableWithLeftRight(ttl.left.mutableBlack,tr.mutableWithLeft(ttl.right))
         else tr.mutableWithLeft(ttl)
       }
     }
 
-    protected[this] def mutableJoin(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B]): Tree[A, B] = {
+    protected[this] def mutableJoin(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B], kvPossibleTree: Tree[A, B]): Tree[A, B] = {
       val bhtl = blackHeight(tl, 0)
       val bhtr = blackHeight(tr, 0)
       if (bhtl > bhtr) {
-        val tt = mutableJoinRight(tl, k, v, tr, bhtl, rank(tr, bhtr))
+        val tt = mutableJoinRight(tl, k, v, tr, bhtl, rank(tr, bhtr), kvPossibleTree)
         if (tt.isRed && isRedTree(tt.right)) tt.mutableBlack
         else tt
       } else if (bhtr > bhtl) {
-        val tt = mutableJoinLeft(tl, k, v, tr, rank(tl, bhtl), bhtr)
+        val tt = mutableJoinLeft(tl, k, v, tr, rank(tl, bhtl), bhtr, kvPossibleTree)
         if (tt.isRed && isRedTree(tt.left)) tt.mutableBlack
         else tt
-      } else mutableMkTree(isRedTree(tl) || isRedTree(tr), k, v, tl, tr)
+      } else reuseOrMakeMutableTree(kvPossibleTree, isRedTree(tl) || isRedTree(tr), k, v, tl, tr)
+
+    }
+    def reuseOrMakeMutableTree(kvPossibleTree: Tree[A,B], isBlackIfNew: Boolean, requiredKey: A, newValue: B, newLeft: Tree[A, B], newRight: Tree[A, B]): Tree[A, B] = {
+      if ((kvPossibleTree ne null) && (kvPossibleTree.key.asInstanceOf[AnyRef] eq requiredKey.asInstanceOf[AnyRef])) {
+        var res = kvPossibleTree
+        res = res.mutableWithV(newValue)
+        res = res.mutableWithLeftRight(newLeft, newRight)
+        if ((isRedTree(newLeft) || isRedTree(newRight)) && res.isRed)
+          res = res.mutableBlack
+        res
+      } else mutableMkTree(isBlackIfNew, requiredKey, newValue, newLeft, newRight)
     }
 
     private[this] def mSplitClear(): Unit = {
@@ -212,11 +228,11 @@ private[collection] object NewRedBlackTree {
         }
         else if(cmp < 0) {
           val k1 = mutableSplit(t.left, k2)
-          mSplitRight = mutableJoin(mSplitLeft, t.key, t.value, t.right)
+          mSplitRight = mutableJoin(mSplitLeft, t.key, t.value, t.right, t)
           k1
         } else {
           val k1 = mutableSplit(t.right, k2)
-          mSplitLeft = mutableJoin(t.left, t.key, t.value, mSplitLeft)
+          mSplitLeft = mutableJoin(t.left, t.key, t.value, mSplitLeft, t)
           k1
         }
       }
@@ -227,10 +243,11 @@ private[collection] object NewRedBlackTree {
       else if (t2 eq null) t1
       else {
         val k1 = mutableSplit(t1, t2.key)
+        val splitTree = mSplitTree
         val tl = mutableUnion(mSplitLeft, t2.left)
         val tr = mutableUnion(mSplitRight, t2.right)
         mSplitClear()
-        mutableJoin(tl, k1, t2.value, tr)
+        mutableJoin(tl, k1, t2.value, tr, splitTree)
       }
     }
   }
@@ -785,14 +802,14 @@ private[collection] object NewRedBlackTree {
       }
       else new Tree(_key, _value, _left, _right, initialBlackCount)
     }
-//    private[NewRedBlackTree] def mutableRed: Tree[A, B] = {
-//      if (isRed) this
-//      else if (mutable) {
-//        _count = initialRedCount
-//        this
-//      }
-//      else new Tree(_key, _value, _left, _right, initialRedCount)
-//    }
+    private[NewRedBlackTree] def mutableRed: Tree[A, B] = {
+      if (isRed) this
+      else if (isMutable) {
+        _count = initialRedCount
+        this
+      }
+      else new Tree(_key, _value, _left, _right, initialRedCount)
+    }
     //Note - in 2.13 remove his method
     //due to the handling of keys in 2.13 we never replace a key
     private[NewRedBlackTree] def mutableWithK[B1 >: B](newKey: A): Tree[A, B1] = {

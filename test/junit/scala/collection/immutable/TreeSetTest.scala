@@ -92,6 +92,25 @@ class TreeSetTest extends AllocationTest{
 
     assertEquals(tree1.drop(5).keySet, tree1.drop(5).keySet)
   }
+  @Test def unionWithSubset: Unit = {
+    val empty = TreeSet.empty[Int]
+    val t = TreeSet(1,2,4,6,8,10)
+    val s = t.union(t.drop(1))
+    println((t union s).tree.debugToString(Some(t.tree)))
+    assertSame(t, t union s)
+
+    assertSame(t, s union t)
+    assertSame(t, t union t)
+    assertSame(t, t union empty)
+    assertSame(t, empty union t)
+
+    onlyAllocates(1)(t union s)
+    nonAllocating(t union t)
+    nonAllocating(s union t)
+    nonAllocating(t union t)
+    nonAllocating(t union empty)
+    nonAllocating(empty union t)
+  }
 
   @Test def equalFastPath: Unit = {
     var compareCount = 0

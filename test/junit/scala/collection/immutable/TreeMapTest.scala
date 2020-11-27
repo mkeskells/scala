@@ -229,6 +229,64 @@ class TreeMapTest extends AllocationTest {
     assertEquals(Map("A" -> "2"), r)
 
   }
+  @Test def unionSpecialCases: Unit = {
+    val empty                   = TreeMap.empty[Int, String]
+    val t: TreeMap[Int, String] = TreeMap(1 -> "", 2 -> "", 4 -> "", 6 -> "", 8 -> "", 10 -> "")
+    assertSame(t, t ++ empty)
+    assertSame(t, empty ++ t)
+    assertSame(t, t ++ t)
+
+    nonAllocating(t ++ empty)
+    nonAllocating(empty ++ t)
+    nonAllocating(t ++ t)
+  }
+
+  def unionSubset(size: Int, elementToRemove: Int): Unit = {
+    val superset = TreeMap[Int, String](Array.tabulate(size) { x => x -> "" }: _*)
+    val subset   = superset - elementToRemove
+
+    println(superset.tree0.debugToString(Some(subset.tree0)))
+    println(subset.tree0.debugToString(Some(superset.tree0)))
+    println((superset ++ subset).tree0.debugToString(Some(superset.tree0)))
+
+    onlyAllocates(0)(superset ++ subset)
+  }
+
+
+    @Test def unionWithSubset1: Unit = {
+      unionSubset(100, 1)
+    }
+    @Test def unionWithSubset2: Unit = {
+      unionSubset(100, 5)
+    }
+    @Test def unionWithSubset3: Unit = {
+      unionSubset(100, 60)
+    }
+    @Test def unionWithSubset4: Unit = {
+      unionSubset(100, 99)
+    }
+  def unionWithSubset() {
+
+    val empty = TreeMap.empty[Int, String]
+    val t = TreeMap(1 -> "",2 -> "",4 -> "",6 -> "",8 -> "",10 -> "")
+    val s = t ++ t.drop(1)
+    println(s.tree0.debugToString(Some(t.tree0)))
+    println((t ++ s).tree0.debugToString(Some(t.tree0)))
+//    assertSame(t, t ++ s)
+//
+//    assertSame(t, s ++ t)
+//    assertSame(t, t ++ t)
+//    assertSame(t, t ++ empty)
+//    assertSame(t, empty ++ t)
+
+    onlyAllocates(1)(t ++ s)
+    nonAllocating(t ++ t)
+    nonAllocating(s ++ t)
+    nonAllocating(t ++ t)
+    nonAllocating(t ++ empty)
+    nonAllocating(empty ++ t)
+  }
+
 
   private def validateMap[A, B](original: TreeMap[A, B], result: TreeMap[A, B]): TreeMap[A, B] = {
     NewRedBlackTree.validate(original.tree0, result.tree0)

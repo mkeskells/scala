@@ -287,7 +287,7 @@ final class TreeMap[A, +B] private (tree: RB.Tree[A, B])(implicit val ordering: 
         if ((tree eq tm.tree0) || (tm.tree0 eq null)) this
         else if (tree eq null) tm
         else defaultAddAll
-      case fe: HasForeachEntry[A, B1] =>
+      case fe: HasForeachEntry[A, _] =>
         if (fe.isEmpty) this
         else defaultAddAll
       case ls: LinearSeq[(A, B1)] =>
