@@ -43,7 +43,7 @@ private[collection] object NewRedBlackTree {
   }
   private[immutable] abstract class Helper[A, B](implicit val ordering: Ordering[A]) {
     @inline private[this] def result(in: Tree[A, B]): Tree[A, B] = {
-      NewRedBlackTree.result(null, in)
+      NewRedBlackTree.result2(null, in)
     }
     def beforePublish(tree: Tree[A, B]): Tree[A, B] = {
       if (tree eq null) tree
@@ -148,6 +148,16 @@ private[collection] object NewRedBlackTree {
     // Additionally we pass `kvPossibleTree`. This may be null, but may contain a tree which can be reused (if the key matched the need)
 
     private[this] def mutableJoinRight(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B], bhtl: Int, rtr: Int, kvPossibleTree: Tree[A, B]): Tree[A, B] = {
+//      val cl = copy(tl)
+//      val cr = copy(tr)
+//      validate2[Int](null, tl.asInstanceOf[Tree[Int, B]])
+//      validate2[Int](null, tr.asInstanceOf[Tree[Int, B]])
+//      val j1 = mutableJoinRightX(tl, k,v,tr, bhtl, rtr,kvPossibleTree)
+//      val j2 = joinRight(cl, k,v,cr, bhtl, rtr)
+//      assertSame(j1, j2)
+//      j1
+//    }
+//    private[this] def mutableJoinRightX(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B], bhtl: Int, rtr: Int, kvPossibleTree: Tree[A, B]): Tree[A, B] = {
       val rtl = rank(tl, bhtl)
       if (rtl == (rtr / 2) * 2) reuseOrMakeMutableTree(kvPossibleTree, false, k, v, tl, tr)
       else {
@@ -161,6 +171,16 @@ private[collection] object NewRedBlackTree {
     }
 
     private[this] def mutableJoinLeft(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B], rtl: Int, bhtr: Int, kvPossibleTree: Tree[A, B]): Tree[A, B] = {
+//      val cl = copy(tl)
+//      val cr = copy(tr)
+//      validate2[Int](null, tl.asInstanceOf[Tree[Int, B]])
+//      validate2[Int](null, tr.asInstanceOf[Tree[Int, B]])
+//      val j1 = mutableJoinLeftX(tl, k,v,tr, rtl, bhtr,kvPossibleTree)
+//      val j2 = joinLeft(cl, k,v,cr, rtl, bhtr)
+//      assertSame(j1, j2)
+//      j1
+//    }
+//    private[this] def mutableJoinLeftX(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B], rtl: Int, bhtr: Int, kvPossibleTree: Tree[A, B]): Tree[A, B] = {
       val rtr = rank(tr, bhtr)
       if (rtr == (rtl / 2) * 2) reuseOrMakeMutableTree(kvPossibleTree, false, k, v, tl, tr)
       else {
@@ -168,12 +188,22 @@ private[collection] object NewRedBlackTree {
         val bhtrl   = if (trBlack) bhtr - 1 else bhtr
         val ttl     = mutableJoinLeft(tl, k, v, tr.left, rtl, bhtrl, kvPossibleTree)
         if (trBlack && ttl.isRed && isRedTree(ttl.left))
-          ttl.mutableWithLeftRight(ttl.left.mutableBlack,tr.mutableWithLeft(ttl.right))
+          ttl.mutableWithLeftRight(ttl.left.mutableBlack, tr.mutableWithLeft(ttl.right))
         else tr.mutableWithLeft(ttl)
       }
     }
 
     protected[this] def mutableJoin(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B], kvPossibleTree: Tree[A, B]): Tree[A, B] = {
+//      val cl = copy(tl)
+//      val cr = copy(tr)
+//      validate2[Int](null, tl.asInstanceOf[Tree[Int, B]])
+//      validate2[Int](null, tr.asInstanceOf[Tree[Int, B]])
+//      val j1 = mutableJoinX(tl, k,v,tr, kvPossibleTree)
+//      val j2 = join(cl, k,v,cr)
+//      assertSame(j1, j2)
+//      j1
+//    }
+//    protected[this] def mutableJoinX(tl: Tree[A, B], k: A, v: B, tr: Tree[A, B], kvPossibleTree: Tree[A, B]): Tree[A, B] = {
       val bhtl = blackHeight(tl, 0)
       val bhtr = blackHeight(tr, 0)
       if (bhtl > bhtr) {
@@ -187,68 +217,176 @@ private[collection] object NewRedBlackTree {
       } else reuseOrMakeMutableTree(kvPossibleTree, isRedTree(tl) || isRedTree(tr), k, v, tl, tr)
 
     }
-    def reuseOrMakeMutableTree(kvPossibleTree: Tree[A,B], isBlackIfNew: Boolean, requiredKey: A, newValue: B, newLeft: Tree[A, B], newRight: Tree[A, B]): Tree[A, B] = {
+    def reuseOrMakeMutableTree(kvPossibleTree: Tree[A, B], isBlack: Boolean, requiredKey: A, newValue: B, newLeft: Tree[A, B], newRight: Tree[A, B]): Tree[A, B] = {
       if ((kvPossibleTree ne null) && (kvPossibleTree.key.asInstanceOf[AnyRef] eq requiredKey.asInstanceOf[AnyRef])) {
         var res = kvPossibleTree
         res = res.mutableWithV(newValue)
         res = res.mutableWithLeftRight(newLeft, newRight)
-        if ((isRedTree(newLeft) || isRedTree(newRight)) && res.isRed)
-          res = res.mutableBlack
+        // from the tests the changing of the colour here seems to be an allocation cause
+        // where we lip the colour and later flip it again
+        // I can't see what we cn simple do to detect those cases though
+        // but worth looking at with fresh eyes sometime
+        // It seems to be very common on leaf nodes ( newLeft == newRight== null)
+        res = if (isBlack) res.mutableBlack
+              else res.mutableRed
         res
-      } else mutableMkTree(isBlackIfNew, requiredKey, newValue, newLeft, newRight)
+      } else mutableMkTree(isBlack, requiredKey, newValue, newLeft, newRight)
     }
 
-    private[this] def mSplitClear(): Unit = {
-      mSplitLeft = null
-      mSplitTree = null
-      mSplitRight = null
+    //avoid tuples4 creations as the splitResult of mutableSplit
+    private[this] class MutableSplitResult {
+      var left : Tree[A, B] = _
+      var tree : Tree[A, B] = _
+      var right: Tree[A, B] = _
+      var key  : A          = null.asInstanceOf[A]
     }
-    private[this] var mSplitLeft, mSplitTree, mSplitRight: Tree[A, B] = null
+
     /**
      * return key key of the split. Other results are returned via shared vars msplit*
      * Works in the same way as def split, but avoids the Tuple4 creation
      *
      * After a entry to mutableSplit clear the temporary var by calling mSplitClear()
-     * @param t the original tree to split
+     *
+     * @param t  the original tree to split
      * @param k2 the search key
-     * @return the result key - other result shared via shared vars
+     * @return the result key - other reults shared via shared vars in splitResult
      */
-    private[this] def mutableSplit(t: Tree[A, B], k2: A): A = {
-      if(t eq null) {
-        mSplitClear()
-        k2
+    private[this] def mutableSplit(t: Tree[A, B], k2: A, result: MutableSplitResult): Unit = {
+//      val ct = copy(t)
+//      val orig = if (ct eq null) "NULL" else ct.debugToString()
+//      if (orig == "") println
+//      validate2[Int](null, ct.asInstanceOf[Tree[Int, B]])
+//      val j1 = mutableSplitX(t, k2, result)
+//      val (tl, tt, tr, kr) = split(ct, k2)
+//      assertSame(tl, result.left)
+//      assertSame(tr, result.right)
+//      assertSame(tt, result.tree)
+//      assert (kr == result.key)
+//    }
+//    private[this] def mutableSplitX(t: Tree[A, B], k2: A, result: MutableSplitResult): Unit = {
+      if (t eq null) {
+        result.left = null
+        result.tree = null
+        result.right = null
+        result.key = k2
       }
       else {
         val cmp = ordering.compare(k2, t.key)
-        if(cmp == 0) {
-           mSplitLeft = t.left
-           mSplitTree = t
-           mSplitRight = t.right
-          t.key
+        if (cmp == 0) {
+          result.left = t.left
+          result.tree = t
+          result.right = t.right
+          result.key = t.key
         }
-        else if(cmp < 0) {
-          val k1 = mutableSplit(t.left, k2)
-          mSplitRight = mutableJoin(mSplitLeft, t.key, t.value, t.right, t)
-          k1
+        else if (cmp < 0) {
+          mutableSplit(t.left, k2, result)
+          result.right = mutableJoin(result.right, t.key, t.value, t.right, t)
         } else {
-          val k1 = mutableSplit(t.right, k2)
-          mSplitLeft = mutableJoin(t.left, t.key, t.value, mSplitLeft, t)
-          k1
+          mutableSplit(t.right, k2, result)
+          result.left = mutableJoin(t.left, t.key, t.value, result.left, t)
         }
       }
     }
 
-    def mutableUnion(t1: Tree[A, B], t2: Tree[A, B]): Tree[A, B] = {
-      if ((t1 eq null) || (t1 eq t2)) t2
-      else if (t2 eq null) t1
+    //should be the same as mutableSplitLast without the tuples
+    private[this] def mutableSplitLast2(t: Tree[A, B]): Tree[A, B] = {
+      if (t.right eq null) t
       else {
-        val k1 = mutableSplit(t1, t2.key)
-        val splitTree = mSplitTree
-        val tl = mutableUnion(mSplitLeft, t2.left)
-        val tr = mutableUnion(mSplitRight, t2.right)
-        mSplitClear()
-        mutableJoin(tl, k1, t2.value, tr, splitTree)
+        val tr =  mutableSplitLast2(t.right)
+        tr.mutableWithLeft(mutableJoin(t.left, t.key, t.value, tr.left, t))
       }
+    }
+
+//    private[this] def mutableSplitLast(t: Tree[A, B]): (Tree[A, B], A, B) = {
+//      if (t.right eq null) (t.left, t.key, t.value)
+//      else {
+//        val (tt, kk, vv) = mutableSplitLast(t.right)
+//        (mutableJoin(t.left, t.key, t.value, tt, t), kk, vv)
+//      }
+//    }
+
+    private[this] def mutableJoin2(tl: Tree[A, B], tr: Tree[A, B]): Tree[A, B] = {
+      if (tl eq null) tr
+      else if (tr eq null) tl
+      else {
+//        val (ttl, k, v) = mutableSplitLast(tl)
+//        mutableJoin(ttl, k, v, tr, null)
+//        should be the same as
+        val tt = mutableSplitLast2(tl)
+        mutableJoin(tt.left, tt.key, tt.value, tr, tt)
+      }
+    }
+//    def copy(t1:Tree[A, B]): Tree[A, B] = {
+//      if ((t1 ne null) && t1.isMutable) {
+//        mkTree(t1.isBlack, t1.key, t1.value, copy(t1.left), copy(t1.right))
+//      } else t1
+//    }
+//    def assertSame (t1: Tree[A, B], t2: Tree[A, B]): Unit = {
+//      if (t1 ne t2) {
+//        assert (t1 ne null)
+//        assert (t2 ne null)
+//        assert (t1.key == t2.key)
+//        assert (t1.value == t2.value)
+//        assertSame(t1.left, t2.left)
+//        assertSame(t1.right, t2.right)
+//      }
+//    }
+
+
+    def mutableUnion(t1: Tree[A, B], t2: Tree[A, B]): Tree[A, B] = {
+      def mutableUnion0(t1: Tree[A, B], t2: Tree[A, B], splitResult: MutableSplitResult): Tree[A, B] = {
+        if ((t1 eq null) || (t1 eq t2)) t2
+        else if (t2 eq null) t1
+        else {
+          mutableSplit(t1, t2.key, splitResult)
+          val k1         = splitResult.key
+          val splitTree  = splitResult.tree
+          val splitLeft  = splitResult.left
+          val splitRight = splitResult.right
+          val tl         = mutableUnion0(splitLeft, t2.left, splitResult)
+          val tr         = mutableUnion0(splitRight, t2.right, splitResult)
+          mutableJoin(tl, k1, t2.value, tr, splitTree)
+        }
+      }
+
+      mutableUnion0(t1, t2, new MutableSplitResult)
+    }
+
+    def mutableIntersect(t1: Tree[A, B], t2: Tree[A, B]): Tree[A, B] = {
+      def mutableIntersect0(t1: Tree[A, B], t2: Tree[A, B], splitResult: MutableSplitResult): Tree[A, B] = {
+        if ((t1 eq null) || (t2 eq null)) null
+        else if (t1 eq t2) t1
+        else {
+          mutableSplit(t1, t2.key, splitResult)
+          val k1         = splitResult.key
+          val splitTree  = splitResult.tree
+          val splitLeft  = splitResult.left
+          val splitRight = splitResult.right
+          val tl         = mutableIntersect0(splitLeft, t2.left, splitResult)
+          val tr         = mutableIntersect0(splitRight, t2.right, splitResult)
+          if (splitTree ne null) mutableJoin(tl, k1, t2.value, tr, t1)
+          else mutableJoin2(tl, tr)
+        }
+      }
+
+      mutableIntersect0(t1, t2, new MutableSplitResult)
+    }
+
+    def mutableDifference(t1: Tree[A, B], t2: Tree[A, B]): Tree[A, B] = {
+      def mutableDifference0(t1: Tree[A, B], t2: Tree[A, B], splitResult: MutableSplitResult): Tree[A, B] = {
+        if ((t1 eq null) || (t2 eq null)) t1
+        else if (t1 eq t2) null
+        else {
+          mutableSplit(t1, t2.key, splitResult)
+          val splitLeft  = splitResult.left
+          val splitRight = splitResult.right
+          val tl         = mutableDifference0(splitLeft, t2.left, splitResult)
+          val tr         = mutableDifference0(splitRight, t2.right, splitResult)
+          mutableJoin2(tl, tr)
+        }
+      }
+
+      mutableDifference0(t1, t2, new MutableSplitResult)
     }
   }
   private[immutable] class SetHelper[A](implicit ordering: Ordering[A]) extends Helper[A, Any] {
@@ -291,22 +429,22 @@ private[collection] object NewRedBlackTree {
   }
 
   def count(tree: Tree[_, _]) = if (tree eq null) 0 else tree.count
-  def update[A: Ordering, B, B1 >: B](tree: Tree[A, B], k: A, v: B1, overwrite: Boolean): Tree[A, B1] = result(tree, upd(tree, k, v, overwrite))
-  def delete[A: Ordering, B](tree: Tree[A, B], k: A): Tree[A, B] = result(tree, del(tree, k))
+  def update[A: Ordering, B, B1 >: B](tree: Tree[A, B], k: A, v: B1, overwrite: Boolean): Tree[A, B1] = result2(tree, upd(tree, k, v, overwrite))
+  def delete[A: Ordering, B](tree: Tree[A, B], k: A): Tree[A, B] = result2(tree, del(tree, k))
   def rangeImpl[A: Ordering, B](tree: Tree[A, B], from: Option[A], until: Option[A]): Tree[A, B] = (from, until) match {
     case (Some(from), Some(until)) => this.range(tree, from, until)
     case (Some(from), None)        => this.from(tree, from)
     case (None,       Some(until)) => this.until(tree, until)
     case (None,       None)        => tree
   }
-  def range[A: Ordering, B](tree: Tree[A, B], from: A, until: A): Tree[A, B] = result(tree, doRange(tree, from, until))
-  def from[A: Ordering, B](tree: Tree[A, B], from: A): Tree[A, B] = result(tree, doFrom(tree, from))
-  def to[A: Ordering, B](tree: Tree[A, B], to: A): Tree[A, B] = result(tree, doTo(tree, to))
-  def until[A: Ordering, B](tree: Tree[A, B], key: A): Tree[A, B] = result(tree, doUntil(tree, key))
+  def range[A: Ordering, B](tree: Tree[A, B], from: A, until: A): Tree[A, B] = result2(tree, doRange(tree, from, until))
+  def from[A: Ordering, B](tree: Tree[A, B], from: A): Tree[A, B] = result2(tree, doFrom(tree, from))
+  def to[A: Ordering, B](tree: Tree[A, B], to: A): Tree[A, B] = result2(tree, doTo(tree, to))
+  def until[A: Ordering, B](tree: Tree[A, B], key: A): Tree[A, B] = result2(tree, doUntil(tree, key))
 
-  def drop[A: Ordering, B](tree: Tree[A, B], n: Int): Tree[A, B] = result(tree, doDrop(tree, n))
-  def take[A: Ordering, B](tree: Tree[A, B], n: Int): Tree[A, B] = result(tree, doTake(tree, n))
-  def slice[A: Ordering, B](tree: Tree[A, B], from: Int, until: Int): Tree[A, B] = result(tree, doSlice(tree, from, until))
+  def drop[A: Ordering, B](tree: Tree[A, B], n: Int): Tree[A, B] = result2(tree, doDrop(tree, n))
+  def take[A: Ordering, B](tree: Tree[A, B], n: Int): Tree[A, B] = result2(tree, doTake(tree, n))
+  def slice[A: Ordering, B](tree: Tree[A, B], from: Int, until: Int): Tree[A, B] = result2(tree, doSlice(tree, from, until))
 
   def smallest[A, B](tree: Tree[A, B]): Tree[A, B] = {
     if (tree eq null) throw new NoSuchElementException("empty tree")
@@ -346,7 +484,51 @@ private[collection] object NewRedBlackTree {
     validate(inputTree, tree)
     tree
   }
+  @inline private def result2[A, B](inputTree: Tree[A, _], resultTree: Tree[A, B])(implicit ordering: Ordering[A]): Tree[A, B] = {
+    val tree = blacken(resultTree)
+    // during development or enhancements to the RedBlackTree, uncomment the next line to validate the
+    // invariants of the RedBlackTree
+    validate(inputTree, tree)
+    validate2(inputTree, tree)
+    tree
+  }
 
+  //only used for testing and development
+  //only used for testing and development
+  private[immutable] def validate2[A](original: Tree[_, _], generated: Tree[A, _])(implicit ordering: Ordering[A]): Unit = {
+    def validateOrder(t: Tree[A, _]): Unit = if (t ne null) {
+      if (t.left ne null) {
+        if (ordering.lteq(t.key, t.left.key))
+          throw new IllegalStateException(s"at ${t.key} <= left ${t.left.key}")
+      }
+      if (t.right ne null) {
+        if (ordering.gteq(t.key, t.right.key))
+          throw new IllegalStateException(s"at ${t.key} >= right ${t.right.key}")
+      }
+      validateOrder(t.left)
+      validateOrder(t.right)
+    }
+
+    if ((generated ne null) && (generated ne original)) {
+      try {
+        validateOrder(generated)
+      } catch {
+        case e: IllegalStateException => {
+          val rebuiltTree = fromOrderedEntries(iterator(generated, None)(null), sizeOf(generated))
+          throw new IllegalStateException(
+            s"""
+               | bad tree:
+               | ${generated.debugToString(Some(original))}
+               | rebuilt:
+               | ${rebuiltTree.debugToString(None)}.
+               | original input tree:
+               | ${if (original eq null) "<null>" else  original.debugToString(None)}
+               |""".stripMargin
+            , e)
+        }
+      }
+    }
+  }
   //only used for testing and development
   private[immutable] def validate(original: Tree[_, _], generated: Tree[_, _]): Unit = {
     def checkAdjacentRed(t: Tree[_, _]): Unit = {
@@ -775,22 +957,18 @@ private[collection] object NewRedBlackTree {
 
     //mutable APIs
     private[NewRedBlackTree] def makeImmutable: Tree[A, B] = {
-      def makeImmutableImpl() = {
-        if (isMutable) {
-          var size = 1
-          if (_left ne null) {
-            _left.makeImmutable
-            size += _left.count
-          }
-          if (_right ne null) {
-            _right.makeImmutable
-            size += _right.count
-          }
-          _count |= size //retains colour
+      if (isMutable) {
+        var size = 1
+        if (_left ne null) {
+          _left.makeImmutable
+          size += _left.count
         }
-        this
+        if (_right ne null) {
+          _right.makeImmutable
+          size += _right.count
+        }
+        _count |= size //retains colour
       }
-      makeImmutableImpl()
       this
     }
 
@@ -1343,18 +1521,18 @@ private[collection] object NewRedBlackTree {
   // Our trees are supposed to have a black root so we always blacken as the last step of union/intersect/difference.
 
   def union[A, B](t1: Tree[A, B], t2: Tree[A, B])(implicit ordering: Ordering[A]): Tree[A, B] = {
-    result(t1, _union(t1, t2))
+    result2(t1, _union(t1, t2))
   }
 
-  def intersect[A, B](t1: Tree[A, B], t2: Tree[A, B])(implicit ordering: Ordering[A]): Tree[A, B] = result(t1, _intersect(t1, t2))
+  def intersect[A, B](t1: Tree[A, B], t2: Tree[A, B])(implicit ordering: Ordering[A]): Tree[A, B] = result2(t1, _intersect(t1, t2))
 
   def difference[A, B](t1: Tree[A, B], t2: Tree[A, _])(implicit ordering: Ordering[A]): Tree[A, B] =
-    result(t1, _difference(t1, t2.asInstanceOf[Tree[A, B]]))
+    result2(t1, _difference(t1, t2.asInstanceOf[Tree[A, B]]))
 
   /** Compute the rank from a tree and its black height */
   @`inline` private[this] def rank(t: Tree[_, _], bh: Int): Int = {
     if(t eq null) 0
-    else if(isBlackTree(t)) 2*(bh-1)
+    else if (t.isBlack) 2*(bh-1)
     else 2*bh-1
   }
 

@@ -29,26 +29,26 @@ class TreeMapTest extends AllocationTest {
   }
   @Test def entriesEqual: Unit = {
     val b1 = TreeMap.newBuilder[Int, String]
-    for ( i <- 10 to 1000) {
+    for (i <- 10 to 1000) {
       b1 += i -> s"$i value"
     }
     val tree1 = b1.result()
-    val b2 = TreeMap.newBuilder[Int, String]
-    for ( i <- 1 to 1000) {
+    val b2    = TreeMap.newBuilder[Int, String]
+    for (i <- 1 to 1000) {
       b2 += i -> s"$i value"
     }
     val tree2 = b2.result().drop(9)
 
     assertEquals(tree1, tree2)
-    assertNotEquals(tree1, (tree2+ (9999 -> "zzz")))
-    assertNotEquals((tree1+ (9999 -> "zzz")), (tree2))
-    assertEquals((tree1+ (9999 -> "zzz")), (tree2+ (9999 -> "zzz")))
-    assertNotEquals((tree1+ (9999 -> "zzz")), (tree2+ (9999999 -> "zzz")))
+    assertNotEquals(tree1, (tree2 + (9999 -> "zzz")))
+    assertNotEquals((tree1 + (9999 -> "zzz")), (tree2))
+    assertEquals((tree1 + (9999 -> "zzz")), (tree2 + (9999 -> "zzz")))
+    assertNotEquals((tree1 + (9999 -> "zzz")), (tree2 + (9999999 -> "zzz")))
   }
   @Test def equalFastPath: Unit = {
     class V(val s: String) {
       override def equals(obj: Any): Boolean = obj match {
-        case v:V => v.s == s
+        case v: V => v.s == s
       }
     }
     var compareCount = 0
@@ -67,7 +67,7 @@ class TreeMapTest extends AllocationTest {
       }
     }
     val b1 = TreeMap.newBuilder[K, V]
-    for ( i <- 10 to 1000) {
+    for (i <- 10 to 1000) {
       b1 += new K(i.toString) -> new V(s"$i value")
     }
     val tree1 = b1.result()
@@ -104,8 +104,8 @@ class TreeMapTest extends AllocationTest {
     class V(val s: String) {
 
       override def equals(obj: Any): Boolean = obj match {
-        case v:V => v.s == s
-        case _ => false
+        case v: V => v.s == s
+        case _    => false
       }
       override def toString: String = s"V-$s"
     }
@@ -117,8 +117,8 @@ class TreeMapTest extends AllocationTest {
         0
       }
       override def equals(obj: Any): Boolean = obj match {
-        case k:K => k.s == s
-        case _ => false
+        case k: K => k.s == s
+        case _    => false
       }
       override def hashCode(): Int = s.hashCode
 
@@ -128,10 +128,10 @@ class TreeMapTest extends AllocationTest {
 
       override def equals(obj: Any): Boolean = obj match {
         case c: CustomOrder => (c eq this) || this.selfEqual && c.selfEqual
-        case _ => false
+        case _              => false
       }
     }
-    val o1 = new CustomOrder(true)
+    val o1   = new CustomOrder(true)
     val o2_1 = new CustomOrder(false)
     val o2_2 = new CustomOrder(false)
 
@@ -141,7 +141,7 @@ class TreeMapTest extends AllocationTest {
     val b2_1 = TreeMap.newBuilder[K, V](o2_1)
     val b2_2 = TreeMap.newBuilder[K, V](o2_2)
 
-    val bHash = HashMap.newBuilder[K,V]
+    val bHash = HashMap.newBuilder[K, V]
     for (i <- 10 to 20) {
       b1_1 += new K(i.toString) -> new V(s"$i value")
       b1_2 += new K(i.toString) -> new V(s"$i value")
@@ -159,9 +159,9 @@ class TreeMapTest extends AllocationTest {
 
     val treeHash = bHash.result()
 
-    val all = List((tree1_1,"tree1_1"), (tree1_2, "tree1_2"), (tree2_1, "tree2_1"), (tree2_2, "tree2_2"), (treeHash, "treeHash"))
-    for ((lhs, lText ) <- all;
-         (rhs, rText) <-all) {
+    val all = List((tree1_1, "tree1_1"), (tree1_2, "tree1_2"), (tree2_1, "tree2_1"), (tree2_2, "tree2_2"), (treeHash, "treeHash"))
+    for ((lhs, lText) <- all;
+         (rhs, rText) <- all) {
       assertEquals(s"$lText $rText", lhs, rhs)
       assertEquals(s"$rText $lText", rhs, lhs)
     }
@@ -171,7 +171,7 @@ class TreeMapTest extends AllocationTest {
     // see https://github.com/scala/scala/pull/7481 and https://github.com/scala/scala/pull/8783
     // for 2.13.x changes that we don't want to include in the RedBlackTree backports to 2.12.x
     // for compatibility.
-    val map = collection.immutable.TreeMap.apply(2 -> 2)(Ordering.by(x => x / 2))
+    val map  = collection.immutable.TreeMap.apply(2 -> 2)(Ordering.by(x => x / 2))
     val map2 = map.updated(3, 3)
     assertEquals(List(3 -> 3), map2.toList)
   }
@@ -182,6 +182,7 @@ class TreeMapTest extends AllocationTest {
     implicit val ordering: Ordering[C] = Ordering.by(_.a)
     val c0l = C(0)("l")
     val c0r = C(0)("r")
+
     def assertIdenticalKeys(expected: Map[C, Unit], actual: Map[C, Unit]): Unit = {
       val expected1, actual1 = Collections.newSetFromMap[C](new java.util.IdentityHashMap())
       expected.keys.foreach(expected1.add)
@@ -202,8 +203,8 @@ class TreeMapTest extends AllocationTest {
 
   @Test
   def overwriteEntryRegression(): Unit = {
-    val x = TreeMap(1 -> "herring", 2 -> "cod", 3 -> "salmon")
-    val y = TreeMap(3 -> "wish")
+    val x  = TreeMap(1 -> "herring", 2 -> "cod", 3 -> "salmon")
+    val y  = TreeMap(3 -> "wish")
     val r1 = x ++ y
     val r2 = (x.toSeq ++ y.toSeq).toMap
     assertEquals(r1, r2)
@@ -220,7 +221,7 @@ class TreeMapTest extends AllocationTest {
   }
   @Test def caseIndependent2: Unit = {
     val m = scala.collection.immutable.TreeMap[String, String]()(_ compareToIgnoreCase _)
-    val r = Seq("a" -> "1", "A" -> "2").foldLeft (m) {
+    val r = Seq("a" -> "1", "A" -> "2").foldLeft(m) {
       case (acc, t) => acc + t
     }
     // Note - in 2.13 this should be
@@ -245,55 +246,36 @@ class TreeMapTest extends AllocationTest {
     val superset = TreeMap[Int, String](Array.tabulate(size) { x => x -> "" }: _*)
     val subset   = superset - elementToRemove
 
-    println(superset.tree0.debugToString(Some(subset.tree0)))
-    println(subset.tree0.debugToString(Some(superset.tree0)))
-    println((superset ++ subset).tree0.debugToString(Some(superset.tree0)))
+    //its a bit sad that this allocates at all
 
-    onlyAllocates(0)(superset ++ subset)
+    onlyAllocates(500)(superset ++ subset)
   }
 
 
-    @Test def unionWithSubset1: Unit = {
-      unionSubset(100, 1)
-    }
-    @Test def unionWithSubset2: Unit = {
-      unionSubset(100, 5)
-    }
-    @Test def unionWithSubset3: Unit = {
-      unionSubset(100, 60)
-    }
-    @Test def unionWithSubset4: Unit = {
-      unionSubset(100, 99)
-    }
-  def unionWithSubset() {
-
-    val empty = TreeMap.empty[Int, String]
-    val t = TreeMap(1 -> "",2 -> "",4 -> "",6 -> "",8 -> "",10 -> "")
-    val s = t ++ t.drop(1)
-    println(s.tree0.debugToString(Some(t.tree0)))
-    println((t ++ s).tree0.debugToString(Some(t.tree0)))
-//    assertSame(t, t ++ s)
-//
-//    assertSame(t, s ++ t)
-//    assertSame(t, t ++ t)
-//    assertSame(t, t ++ empty)
-//    assertSame(t, empty ++ t)
-
-    onlyAllocates(1)(t ++ s)
-    nonAllocating(t ++ t)
-    nonAllocating(s ++ t)
-    nonAllocating(t ++ t)
-    nonAllocating(t ++ empty)
-    nonAllocating(empty ++ t)
+  @Test def unionWithSubset0: Unit = {
+    unionSubset(100, 0)
+  }
+  @Test def unionWithSubset1: Unit = {
+    unionSubset(100, 1)
+  }
+  @Test def unionWithSubset2: Unit = {
+    unionSubset(100, 5)
+  }
+  @Test def unionWithSubset3: Unit = {
+    unionSubset(100, 60)
+  }
+  @Test def unionWithSubset4: Unit = {
+    unionSubset(100, 99)
   }
 
-
-  private def validateMap[A, B](original: TreeMap[A, B], result: TreeMap[A, B]): TreeMap[A, B] = {
+  private def validateMap[A, B](original: TreeMap[A, B], result: TreeMap[A, B])(implicit ordering: Ordering[A]): TreeMap[A, B] = {
     NewRedBlackTree.validate(original.tree0, result.tree0)
+    NewRedBlackTree.validate2(original.tree0, result.tree0)
     result
   }
-  private def validateSet[A](original: TreeSet[A], result: TreeSet[A]): TreeSet[A] = {
+  private def validateSet[A](original: TreeSet[A], result: TreeSet[A])(implicit ordering: Ordering[A]): TreeSet[A] = {
     NewRedBlackTree.validate(original.tree, result.tree)
+    NewRedBlackTree.validate2(original.tree, result.tree)
     result
   }
   @Test
@@ -328,7 +310,7 @@ class TreeMapTest extends AllocationTest {
       m = validateMap(m, m + ((r.nextInt(1000), "")))
       m = validateMap(m, m - r.nextInt(1000))
 
-      val (m1,m2) = m.splitAt(r.nextInt(1000))
+      val (m1, m2) = m.splitAt(r.nextInt(1000))
 
       validateMap(m, m1)
       validateMap(m, m2)
@@ -433,47 +415,66 @@ class TreeMapTest extends AllocationTest {
       validateMap(m, m.range(r.nextInt(1000), r.nextInt(1000)))
     }
   }
+
+  def checkUnion(union: TreeMap[Int, String], m1: TreeMap[Int, String], m2: TreeMap[Int, String], v1: String, v2: String): Unit = {
+    union.foreachEntry { (k, v) =>
+      m2.get(k) match {
+        case Some(m2v) =>
+          if (v2 ne null)
+            assertEquals(v2, m2v)
+          assertEquals(m2v, v)
+        case None =>
+          assertEquals(Some(v1), m1.get(k))
+          assertEquals(v1, v)
+      }
+    }
+  }
+
   @Test
   def randomTreeUnion() {
-    val r = new Random(0)
+    val r  = new Random(0)
     var m1 = TreeMap[Int, String]()
     var m2 = TreeMap[Int, String]()
-    for (i <- 1 to 100000) {
-      m1 = validateMap(m1, m1 +((r.nextInt(1000), "")))
+    for (i <- 1 to 10000) {
+      m1 = validateMap(m1, m1 + ((r.nextInt(1000), "1")))
       m1 = validateMap(m1, m1 - r.nextInt(1000))
 
-      m2 = validateMap(m2, m2 + ((r.nextInt(1000), "")))
+      m2 = validateMap(m2, m2 + ((r.nextInt(1000), "2")))
       m2 = validateMap(m2, m2 - r.nextInt(1000))
 
-      validateMap(m1, m1 ++ m2)
+      var union = validateMap(m1, m1 ++ m2)
+      checkUnion(union, m1, m2, "1", "2")
 
       var m3 = m1
       m3 = validateMap(m3, m3 - r.nextInt(1000))
       m3 = validateMap(m3, m3 - r.nextInt(1000))
       m3 = validateMap(m3, m3 - r.nextInt(1000))
       //subset
-      validateMap(m1, m1 ++ m3)
+      union = validateMap(m1, m1 ++ m3)
+      checkUnion(union, m1, m3, "1", null)
 
       m3 = m1
-      m3 = validateMap(m3, m3 + ((r.nextInt(1000), "")))
-      m3 = validateMap(m3, m3 + ((r.nextInt(1000), "")))
-      m3 = validateMap(m3, m3 + ((r.nextInt(1000), "")))
+      m3 = validateMap(m3, m3 + ((r.nextInt(1000), "3")))
+      m3 = validateMap(m3, m3 + ((r.nextInt(1000), "3")))
+      m3 = validateMap(m3, m3 + ((r.nextInt(1000), "3")))
       //superset
-      validateMap(m1, m1 ++ m3)
+      union = validateMap(m1, m1 ++ m3)
+      checkUnion(union, m1, m3, "1", null)
 
       m3 = validateMap(m3, m3 - r.nextInt(1000))
       m3 = validateMap(m3, m3 - r.nextInt(1000))
       m3 = validateMap(m3, m3 - r.nextInt(1000))
       //overlap
-      validateMap(m1, m1 ++ m3)
+      union = validateMap(m1, m1 ++ m3)
+      checkUnion(union, m1, m3, "1", null)
     }
   }
   @Test
   def randomTreeDiff() {
-    val r = new Random(0)
+    val r  = new Random(0)
     var m1 = TreeMap[Int, String]()
     var m2 = TreeSet[Int]()
-    for (i <- 1 to 100000) {
+    for (i <- 1 to 10000) {
       m1 = validateMap(m1, m1 + ((r.nextInt(1000), "")))
       m1 = validateMap(m1, m1 - r.nextInt(1000))
 
@@ -505,7 +506,7 @@ class TreeMapTest extends AllocationTest {
   }
   @Test
   def randomTreeFilter() {
-    val r = new Random(0)
+    val r  = new Random(0)
     var m1 = TreeMap[Int, String]()
     var m2 = HashSet[Int]()
     for (i <- 1 to 100000) {
@@ -541,7 +542,7 @@ class TreeMapTest extends AllocationTest {
   }
   @Test
   def randomTreeTransform() {
-    val r = new Random(0)
+    val r  = new Random(0)
     var m1 = TreeMap[Int, String]()
     for (i <- 1 to 100000) {
       m1 = validateMap(m1, m1 + ((r.nextInt(1000), "")))
@@ -552,7 +553,7 @@ class TreeMapTest extends AllocationTest {
   }
   @Test
   def randomTreePartition() {
-    val r = new Random(0)
+    val r  = new Random(0)
     var m1 = TreeMap[Int, String]()
     var m2 = TreeSet[Int]()
     for (i <- 1 to 100000) {
